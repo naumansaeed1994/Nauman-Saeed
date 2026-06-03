@@ -1,0 +1,10 @@
+{
+  "name": "Local Voice Cloner",
+  "description": "An elegant, high-performance natural text-to-speech assistant that processes unlimited text on-device using premium human voices.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
