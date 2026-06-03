@@ -52,11 +52,13 @@ async function startServer() {
   });
 
   // API Route: Stream High-Fidelity Audio Chunks (Dynamic Proxy)
-  app.get("/api/tts", async (req, res) => {
-    const text = (req.query.text as string) || "";
-    const provider = (req.query.provider as string) || "openai";
-    const voice = (req.query.voice as string) || "alloy";
-    const speed = parseFloat(req.query.speed as string) || 1.0;
+  app.all("/api/tts", async (req, res) => {
+    const text = (req.body?.text as string) || (req.query.text as string) || "";
+    const previous_text = (req.body?.previous_text as string) || (req.query.previous_text as string) || "";
+    const next_text = (req.body?.next_text as string) || (req.query.next_text as string) || "";
+    const provider = (req.body?.provider as string) || (req.query.provider as string) || "openai";
+    const voice = (req.body?.voice as string) || (req.query.voice as string) || "alloy";
+    const speed = parseFloat((req.body?.speed as string) || (req.query.speed as string)) || 1.0;
 
     if (!text.trim()) {
       return res.status(400).json({ error: "Text prompt cannot be empty." });
@@ -120,20 +122,24 @@ async function startServer() {
 
         // Accept any valid voice ID passed from the client, defaulting to Rachel
         const voiceId = (voice && /^[a-zA-Z0-9_-]+$/.test(voice)) ? voice : "21m00Tcm4TlvDq8ikWAM";
+        const bodyPayload: any = {
+          text: text,
+          model_id: "eleven_turbo_v2_5",
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75
+          }
+        };
+        if (previous_text) bodyPayload.previous_text = previous_text;
+        if (next_text) bodyPayload.next_text = next_text;
+        
         const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=mp3_44100_128`, {
           method: "POST",
           headers: {
             "xi-api-key": apiKey,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({
-            text: text,
-            model_id: "eleven_turbo_v2_5",
-            voice_settings: {
-              stability: 0.5,
-              similarity_boost: 0.75
-            }
-          })
+          body: JSON.stringify(bodyPayload)
         });
 
         if (!response.ok) {

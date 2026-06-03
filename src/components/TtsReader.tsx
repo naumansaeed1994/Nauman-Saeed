@@ -543,17 +543,26 @@ export function TtsReader() {
     }
 
     const sentenceObject = sentencesRef.current[idx];
-    const queryParams = new URLSearchParams({
+    const prevText = idx > 0 ? sentencesRef.current[idx - 1].text : "";
+    const nextText = idx < sentencesRef.current.length - 1 ? sentencesRef.current[idx + 1].text : "";
+
+    const fetchBody = JSON.stringify({
       text: sentenceObject.text,
+      previous_text: prevText,
+      next_text: nextText,
       provider: premiumProvider,
       voice: premiumVoice,
       speed: speedRate.toString()
     });
 
-    const audioStreamSource = `/api/tts?${queryParams.toString()}`;
+    const audioStreamSource = `/api/tts`;
     const currentPrefetchSessionId = activeSessionIdRef.current;
 
-    const promise = fetch(audioStreamSource)
+    const promise = fetch(audioStreamSource, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: fetchBody
+    })
       .then(async (response) => {
         if (currentPrefetchSessionId !== activeSessionIdRef.current) {
           throw new Error("Prefetch cancelled: session changed");
@@ -694,16 +703,25 @@ export function TtsReader() {
 
       const fetchNormal = () => {
         setIsSynthesizing(true);
-        const queryParams = new URLSearchParams({
+        const prevText = idx > 0 ? sentences[idx - 1].text : "";
+        const nextText = idx < sentences.length - 1 ? sentences[idx + 1].text : "";
+
+        const fetchBody = JSON.stringify({
           text: sentenceObject.text,
+          previous_text: prevText,
+          next_text: nextText,
           provider: premiumProvider,
           voice: premiumVoice,
           speed: speedRate.toString()
         });
 
-        const audioStreamSource = `/api/tts?${queryParams.toString()}`;
+        const audioStreamSource = `/api/tts`;
 
-        fetch(audioStreamSource)
+        fetch(audioStreamSource, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: fetchBody
+        })
           .then(async (response) => {
             if (currentSessionPlayId !== activeSessionIdRef.current) return;
 
