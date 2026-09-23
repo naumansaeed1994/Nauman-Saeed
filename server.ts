@@ -59,6 +59,8 @@ async function startServer() {
     const provider = (req.body?.provider as string) || (req.query.provider as string) || "openai";
     const voice = (req.body?.voice as string) || (req.query.voice as string) || "alloy";
     const speed = parseFloat((req.body?.speed as string) || (req.query.speed as string)) || 1.0;
+    const isHinglish = req.body?.isHinglish === true || req.query.isHinglish === "true";
+    const language_code = (req.body?.language_code as string) || (req.query.language_code as string) || (isHinglish ? "hi" : "");
 
     if (!text.trim()) {
       return res.status(400).json({ error: "Text prompt cannot be empty." });
@@ -122,6 +124,16 @@ async function startServer() {
 
         // Accept any valid voice ID passed from the client, defaulting to Rachel
         const voiceId = (voice && /^[a-zA-Z0-9_-]+$/.test(voice)) ? voice : "21m00Tcm4TlvDq8ikWAM";
+
+        const hinglishVoiceIds = [
+          "vnSUKPMtxX6uQ17zZirB", // Aman (Hinglish Male)
+          "RABOvaPec1ymXz02oDQi", // Anika (Hinglish Female)
+          "MXGyTMlsvQgQ4BL0emIa", // Aakash Aryan (Hinglish Male)
+          "2F1KINpxsttim2WfMbVs", // Sneha / DB (Hinglish Female)
+        ];
+
+        const targetLangCode = language_code || (hinglishVoiceIds.includes(voiceId) ? "hi" : "");
+
         const bodyPayload: any = {
           text: text,
           model_id: "eleven_turbo_v2_5",
@@ -130,10 +142,16 @@ async function startServer() {
             similarity_boost: 0.75
           }
         };
+
+        // When language_code is 'hi', ElevenLabs Turbo v2.5 enforces phonetic Hindi/Urdu rules on Latin script (Hinglish)
+        if (targetLangCode) {
+          bodyPayload.language_code = targetLangCode;
+        }
+
         if (previous_text) bodyPayload.previous_text = previous_text;
         if (next_text) bodyPayload.next_text = next_text;
         
-        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=mp3_44100_128`, {
+        let response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=mp3_44100_128`, {
           method: "POST",
           headers: {
             "xi-api-key": apiKey,
@@ -141,6 +159,27 @@ async function startServer() {
           },
           body: JSON.stringify(bodyPayload)
         });
+
+        // Resilient fallback: If an unadded community voice ID returns 404, fallback to default premade voice with Hinglish language_code preserved
+        if (!response.ok && response.status === 404 && voiceId !== "21m00Tcm4TlvDq8ikWAM" && voiceId !== "ErXwobaYiN019PkySvjV") {
+          console.warn(`Voice ID ${voiceId} not found or restricted. Retrying with fallback voice with Hinglish phonetics.`);
+          const fallbackVoiceId = (voiceId === "vnSUKPMtxX6uQ17zZirB" || voiceId === "MXGyTMlsvQgQ4BL0emIa")
+            ? "ErXwobaYiN019PkySvjV" // Antoni (Male)
+            : "21m00Tcm4TlvDq8ikWAM"; // Rachel (Female)
+
+          const fallbackRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${fallbackVoiceId}/stream?output_format=mp3_44100_128`, {
+            method: "POST",
+            headers: {
+              "xi-api-key": apiKey,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(bodyPayload)
+          });
+
+          if (fallbackRes.ok) {
+            response = fallbackRes;
+          }
+        }
 
         if (!response.ok) {
           const errorDetails = await response.text();

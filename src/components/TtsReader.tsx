@@ -123,6 +123,11 @@ export function TtsReader() {
     return saved ? parseFloat(saved) : 1.0;
   });
 
+  // Hinglish / Roman Urdu phonetics state (Hindi/Urdu written in English script)
+  const [isHinglishMode, setIsHinglishMode] = useState<boolean>(() => {
+    return localStorage.getItem('ultra_tts_hinglish_mode') === 'true';
+  });
+
   // Backend Key Health validation trackers
   const [apiHealth, setApiHealth] = useState<{
     loaded: boolean;
@@ -216,30 +221,45 @@ export function TtsReader() {
     clearPrefetchCache();
   }, [speedRate]);
 
+  useEffect(() => {
+    localStorage.setItem('ultra_tts_hinglish_mode', isHinglishMode ? 'true' : 'false');
+    clearPrefetchCache();
+  }, [isHinglishMode]);
+
   // Keep voices sanitized in local selection
   useEffect(() => {
     if (!apiHealth.loaded) return;
     if (apiHealth.elevenlabs && !hasLoadedElevenlabsVoices) return;
 
     const openAiVoices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
-    const elevenlabsVoiceIds = elevenlabsVoices.length > 0
-      ? elevenlabsVoices.map(v => v.voice_id)
-      : [
-          "21m00Tcm4TlvDq8ikWAM", // Rachel (US Female)
-          "AZnzlk1XvdvUeBnXmlld", // Domi (US Female)
-          "EXAVITQu4vr4xnSDXIFr", // Bella (US Female)
-          "ErXwobaYiN019PkySvjV", // Antoni (US Male)
-          "GBv7mTt0atIp3u8bJ6lh", // Thomas (US Male)
-          "ODq5Z3HLgObAl8m6HqgE", // Marcus (US Male)
-          "VR6A4UBYWhgESBE666XU", // Arnold (US Male)
-          "pqHfZKP7ZaD6COStojSO", // Bill (US Male)
-          "TX3851FmAxi1mzoGEFLW", // Liam (GB Male)
-          "JbF274C2wbvOCYuTh39p", // George (GB Male)
-          "Xb7hH9SSTgB667faAd9f", // Alice (GB Female)
-          "N2lVSClvY4GKK9AV3Ocm", // Callum (GB Male)
-          "piTKgcLEGmPEe24241g5", // Nicole (AUS Female)
-          "IKne3meq5aSn9XLyUdCD"  // Charlie (AUS Male)
-        ];
+    const featuredHinglishIds = [
+      "vnSUKPMtxX6uQ17zZirB", // Aman (Hinglish Male)
+      "RABOvaPec1ymXz02oDQi", // Anika (Hinglish Female)
+      "MXGyTMlsvQgQ4BL0emIa", // Aakash Aryan (Hinglish Male)
+      "2F1KINpxsttim2WfMbVs"  // Sneha / DB (Hinglish Female)
+    ];
+
+    const elevenlabsVoiceIds = [
+      ...featuredHinglishIds,
+      ...(elevenlabsVoices.length > 0
+        ? elevenlabsVoices.map(v => v.voice_id)
+        : [
+            "21m00Tcm4TlvDq8ikWAM", // Rachel (US Female)
+            "AZnzlk1XvdvUeBnXmlld", // Domi (US Female)
+            "EXAVITQu4vr4xnSDXIFr", // Bella (US Female)
+            "ErXwobaYiN019PkySvjV", // Antoni (US Male)
+            "GBv7mTt0atIp3u8bJ6lh", // Thomas (US Male)
+            "ODq5Z3HLgObAl8m6HqgE", // Marcus (US Male)
+            "VR6A4UBYWhgESBE666XU", // Arnold (US Male)
+            "pqHfZKP7ZaD6COStojSO", // Bill (US Male)
+            "TX3851FmAxi1mzoGEFLW", // Liam (GB Male)
+            "JbF274C2wbvOCYuTh39p", // George (GB Male)
+            "Xb7hH9SSTgB667faAd9f", // Alice (GB Female)
+            "N2lVSClvY4GKK9AV3Ocm", // Callum (GB Male)
+            "piTKgcLEGmPEe24241g5", // Nicole (AUS Female)
+            "IKne3meq5aSn9XLyUdCD"  // Charlie (AUS Male)
+          ])
+    ];
 
     if (premiumProvider === 'openai') {
       if (!openAiVoices.includes(premiumVoice)) {
@@ -552,7 +572,9 @@ export function TtsReader() {
       next_text: nextText,
       provider: premiumProvider,
       voice: premiumVoice,
-      speed: speedRate.toString()
+      speed: speedRate.toString(),
+      isHinglish: isHinglishMode,
+      language_code: isHinglishMode ? "hi" : undefined
     });
 
     const audioStreamSource = `/api/tts`;
@@ -712,7 +734,9 @@ export function TtsReader() {
           next_text: nextText,
           provider: premiumProvider,
           voice: premiumVoice,
-          speed: speedRate.toString()
+          speed: speedRate.toString(),
+          isHinglish: isHinglishMode,
+          language_code: isHinglishMode ? "hi" : undefined
         });
 
         const audioStreamSource = `/api/tts`;
@@ -780,6 +804,14 @@ export function TtsReader() {
       const localProfileObj = systemVoices.find(v => v.voiceURI === selectedLocalVoiceURI);
       if (localProfileObj) {
         utterance.voice = localProfileObj;
+      }
+
+      if (isHinglishMode) {
+        if (localProfileObj && (localProfileObj.lang.startsWith('hi') || localProfileObj.lang.startsWith('ur') || localProfileObj.lang.includes('IN'))) {
+          utterance.lang = localProfileObj.lang;
+        } else {
+          utterance.lang = 'hi-IN';
+        }
       }
 
       utterance.rate = speedRate;
@@ -1102,22 +1134,42 @@ export function TtsReader() {
                       <Type className="w-3.5 h-3.5 text-amber-500" />
                       <span>Paste Text Here</span>
                     </span>
-                    {pastedText.length > 0 && (
-                      <div className="flex items-center gap-4">
-                        <button
-                          onClick={handleSaveSession}
-                          className="text-amber-500 hover:text-amber-400 flex items-center gap-1 transition-all cursor-pointer font-bold font-mono text-[9px]"
-                        >
-                          <BookOpen className="w-3 h-3" /> Save Session
-                        </button>
-                        <button
-                          onClick={handleClearOutput}
-                          className="text-red-400 hover:text-red-300 flex items-center gap-1 transition-all cursor-pointer font-bold font-mono text-[9px]"
-                        >
-                          <Trash2 className="w-3 h-3" /> Clear Text
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPastedText(
+                            "Namaste dosto! Yeh voice reader ab Hinglish aur Roman Urdu bilkul aasaani se samajh kar bolta hai.\n\nAap Hindi ya Urdu jumlay English letters mein likhein, jaise 'kya haal hai aapka' ya 'aaj ka din kaisa guzra'.\n\nMale aur female dono awazein bilkul natural flow aur perfect pronunciation ke sath padhengi!"
+                          );
+                          setIsHinglishMode(true);
+                          if (premiumProvider === 'elevenlabs') {
+                            setPremiumVoice('vnSUKPMtxX6uQ17zZirB');
+                          } else {
+                            setPremiumVoice('echo');
+                          }
+                        }}
+                        className="text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-all cursor-pointer font-bold font-mono text-[9px] bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30"
+                        title="Load Hindi/Urdu text written in English fonts (Hinglish)"
+                      >
+                        <Sparkles className="w-3 h-3 text-amber-400" /> Hinglish Sample
+                      </button>
+                      {pastedText.length > 0 && (
+                        <>
+                          <button
+                            onClick={handleSaveSession}
+                            className="text-amber-500 hover:text-amber-400 flex items-center gap-1 transition-all cursor-pointer font-bold font-mono text-[9px]"
+                          >
+                            <BookOpen className="w-3 h-3" /> Save Session
+                          </button>
+                          <button
+                            onClick={handleClearOutput}
+                            className="text-red-400 hover:text-red-300 flex items-center gap-1 transition-all cursor-pointer font-bold font-mono text-[9px]"
+                          >
+                            <Trash2 className="w-3 h-3" /> Clear Text
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   <textarea
@@ -1350,7 +1402,19 @@ export function TtsReader() {
                           id="voice-character-dropdown"
                           value={premiumVoice}
                           onChange={(e) => {
-                            setPremiumVoice(e.target.value);
+                            const val = e.target.value;
+                            setPremiumVoice(val);
+                            const isHinglishVoice = [
+                              "vnSUKPMtxX6uQ17zZirB",
+                              "RABOvaPec1ymXz02oDQi",
+                              "MXGyTMlsvQgQ4BL0emIa",
+                              "2F1KINpxsttim2WfMbVs",
+                              "echo",
+                              "nova"
+                            ].includes(val);
+                            if (isHinglishVoice) {
+                              setIsHinglishMode(true);
+                            }
                             if (isPlaying) {
                               playSentenceAtIndex(currentSentenceIndex >= 0 ? currentSentenceIndex : 0);
                             }
@@ -1358,57 +1422,68 @@ export function TtsReader() {
                           className="w-full bg-slate-950 border border-slate-900 text-slate-300 text-[11px] rounded-lg p-2 outline-none focus:border-amber-500/50 appearance-none cursor-pointer font-mono"
                         >
                           {premiumProvider === 'elevenlabs' ? (
-                            elevenlabsVoices.length > 0 ? (
-                              <>
-                                {(() => {
-                                  const customVoices = elevenlabsVoices.filter(v => v.category !== 'premade');
-                                  const premadeVoices = elevenlabsVoices.filter(v => v.category === 'premade');
-                                  return (
-                                    <>
-                                      {customVoices.length > 0 && (
-                                        <optgroup label="👤 Personal Cloned / Custom Voices">
-                                          {customVoices.map(v => (
-                                            <option key={v.voice_id} value={v.voice_id}>
-                                              {v.name} ({v.category})
-                                            </option>
-                                          ))}
+                            <>
+                              <optgroup label="🇮🇳 🇵🇰 Hinglish & Roman Urdu (Hindi/Urdu in English fonts)">
+                                <option value="vnSUKPMtxX6uQ17zZirB">Aman (Hinglish & Roman Urdu — Male 👨)</option>
+                                <option value="RABOvaPec1ymXz02oDQi">Anika (Hinglish & Roman Urdu — Female 👩)</option>
+                                <option value="MXGyTMlsvQgQ4BL0emIa">Aakash Aryan (Natural Hinglish — Male 👨)</option>
+                                <option value="2F1KINpxsttim2WfMbVs">Sneha / DB (Melodious Hinglish — Female 👩)</option>
+                              </optgroup>
+
+                              {(() => {
+                                const customVoices = elevenlabsVoices.filter(v => v.category !== 'premade');
+                                const premadeVoices = elevenlabsVoices.filter(v => v.category === 'premade');
+                                return (
+                                  <>
+                                    {customVoices.length > 0 && (
+                                      <optgroup label="👤 Personal Cloned / Custom Voices">
+                                        {customVoices.map(v => (
+                                          <option key={v.voice_id} value={v.voice_id}>
+                                            {v.name} ({v.category})
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                    )}
+                                    {premadeVoices.length > 0 && (
+                                      <optgroup label="✨ ElevenLabs Premade Voices">
+                                        {premadeVoices.map(v => (
+                                          <option key={v.voice_id} value={v.voice_id}>
+                                            {v.name}
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                    )}
+                                    {elevenlabsVoices.length === 0 && (
+                                      <>
+                                        <optgroup label="🇺🇸 US Accents (Clear & Conversational)">
+                                          <option value="21m00Tcm4TlvDq8ikWAM">Rachel (Vivid Narrator — Female)</option>
+                                          <option value="AZnzlk1XvdvUeBnXmlld">Domi (Conversational — Female)</option>
+                                          <option value="EXAVITQu4vr4xnSDXIFr">Bella (Clean, Professional — Female)</option>
+                                          <option value="ErXwobaYiN019PkySvjV">Antoni (Expressive Storyteller — Male)</option>
+                                          <option value="GBv7mTt0atIp3u8bJ6lh">Thomas (Polished Professional — Male)</option>
+                                          <option value="ODq5Z3HLgObAl8m6HqgE">Marcus (Warm Story — Male)</option>
                                         </optgroup>
-                                      )}
-                                      {premadeVoices.length > 0 && (
-                                        <optgroup label="✨ ElevenLabs Premade Voices">
-                                          {premadeVoices.map(v => (
-                                            <option key={v.voice_id} value={v.voice_id}>
-                                              {v.name}
-                                            </option>
-                                          ))}
+                                        <optgroup label="🇬🇧 GB Accents (British Delivery)">
+                                          <option value="TX3851FmAxi1mzoGEFLW">Liam (Clear Professional — Male)</option>
+                                          <option value="JbF274C2wbvOCYuTh39p">George (Warm Narrative — Male)</option>
                                         </optgroup>
-                                      )}
-                                    </>
-                                  );
-                                })()}
-                              </>
-                            ) : (
-                              <>
-                                <optgroup label="🇺🇸 US Accents (Clear & Conversational)">
-                                  <option value="21m00Tcm4TlvDq8ikWAM">Rachel (Vivid Narrator)</option>
-                                  <option value="AZnzlk1XvdvUeBnXmlld">Domi (Conversational)</option>
-                                  <option value="EXAVITQu4vr4xnSDXIFr">Bella (Clean, Professional)</option>
-                                  <option value="ErXwobaYiN019PkySvjV">Antoni (Expressive Storyteller)</option>
-                                  <option value="GBv7mTt0atIp3u8bJ6lh">Thomas (Polished Professional)</option>
-                                  <option value="ODq5Z3HLgObAl8m6HqgE">Marcus (Warm Story)</option>
-                                </optgroup>
-                                <optgroup label="🇬🇧 GB Accents (British Delivery)">
-                                  <option value="TX3851FmAxi1mzoGEFLW">Liam (Clear Professional)</option>
-                                  <option value="JbF274C2wbvOCYuTh39p">George (Warm Narrative)</option>
-                                </optgroup>
-                              </>
-                            )
+                                      </>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </>
                           ) : (
                             <>
-                              <optgroup label="🇺🇸 OpenAI US Accents">
+                              <optgroup label="🇮🇳 🇵🇰 Hinglish & South Asian Friendly (OpenAI)">
+                                <option value="echo">Echo (Hinglish & Roman Urdu — Male 👨)</option>
+                                <option value="nova">Nova (Hinglish & Roman Urdu — Female 👩)</option>
+                                <option value="onyx">Onyx (Deep Resonant — Male 👨)</option>
+                                <option value="shimmer">Shimmer (Melodic Warm — Female 👩)</option>
+                              </optgroup>
+                              <optgroup label="🇺🇸 Standard OpenAI Accents">
                                 <option value="alloy">Alloy (Polished Neutral)</option>
-                                <option value="echo">Echo (Crisp Warm Male)</option>
-                                <option value="onyx">Onyx (Deep Immersive Tone)</option>
+                                <option value="fable">Fable (Warm Storyteller)</option>
                               </optgroup>
                             </>
                           )}
@@ -1416,6 +1491,46 @@ export function TtsReader() {
                         <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-[8px]">
                           ▼
                         </span>
+                      </div>
+
+                      {/* Hinglish Phonetics dedicated toggle row */}
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-900/60 mt-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px]">🇮🇳 🇵🇰</span>
+                          <div>
+                            <div className="text-[9px] font-mono text-slate-300 font-semibold flex items-center gap-1">
+                              <span>Hinglish Mode</span>
+                              {isHinglishMode ? (
+                                <span className="text-[7px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1 py-0.2 rounded font-mono uppercase tracking-wider font-semibold">
+                                  Active
+                                </span>
+                              ) : (
+                                <span className="text-[7px] bg-slate-900 text-slate-500 px-1 py-0.2 rounded font-mono uppercase tracking-wider">
+                                  Off
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[8px] text-slate-500 leading-tight">
+                              Pronounces Hindi/Urdu written in English script
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsHinglishMode(!isHinglishMode);
+                            if (isPlaying) {
+                              playSentenceAtIndex(currentSentenceIndex >= 0 ? currentSentenceIndex : 0);
+                            }
+                          }}
+                          className={`px-2 py-0.5 rounded text-[8px] font-mono uppercase font-bold tracking-wider transition-all cursor-pointer ${
+                            isHinglishMode
+                              ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/20'
+                              : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                          }`}
+                        >
+                          {isHinglishMode ? 'Enabled' : 'Enable'}
+                        </button>
                       </div>
                     </>
                   ) : (
@@ -1437,16 +1552,69 @@ export function TtsReader() {
                           {systemVoices.length === 0 ? (
                             <option>Retrieving native profiles...</option>
                           ) : (
-                            systemVoices.map(v => (
-                              <option key={v.voiceURI} value={v.voiceURI}>
-                                {v.name} ({v.lang})
-                              </option>
-                            ))
+                            (() => {
+                              const hinglishLocalVoices = systemVoices.filter(v =>
+                                v.lang.toLowerCase().startsWith('hi') ||
+                                v.lang.toLowerCase().startsWith('ur') ||
+                                v.lang.toUpperCase().includes('IN') ||
+                                v.name.toLowerCase().includes('hindi') ||
+                                v.name.toLowerCase().includes('urdu') ||
+                                v.name.toLowerCase().includes('india')
+                              );
+                              const otherLocalVoices = systemVoices.filter(v => !hinglishLocalVoices.includes(v));
+
+                              return (
+                                <>
+                                  {hinglishLocalVoices.length > 0 && (
+                                    <optgroup label="🇮🇳 🇵🇰 Hinglish / Hindi / Urdu Voices">
+                                      {hinglishLocalVoices.map(v => (
+                                        <option key={v.voiceURI} value={v.voiceURI}>
+                                          {v.name} ({v.lang})
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  )}
+                                  <optgroup label="🌐 All System Voices">
+                                    {otherLocalVoices.map(v => (
+                                      <option key={v.voiceURI} value={v.voiceURI}>
+                                        {v.name} ({v.lang})
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                </>
+                              );
+                            })()
                           )}
                         </select>
                         <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-[8px]">
                           ▼
                         </span>
+                      </div>
+
+                      {/* Hinglish Phonetics local toggle row */}
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-900/60 mt-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px]">🇮🇳 🇵🇰</span>
+                          <span className="text-[9px] font-mono text-slate-300 font-semibold">
+                            Hinglish Phonetics
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsHinglishMode(!isHinglishMode);
+                            if (isPlaying) {
+                              playSentenceAtIndex(currentSentenceIndex >= 0 ? currentSentenceIndex : 0);
+                            }
+                          }}
+                          className={`px-2 py-0.5 rounded text-[8px] font-mono uppercase font-bold tracking-wider transition-all cursor-pointer ${
+                            isHinglishMode
+                              ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/20'
+                              : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                          }`}
+                        >
+                          {isHinglishMode ? 'Enabled' : 'Enable'}
+                        </button>
                       </div>
                     </>
                   )}
@@ -1557,8 +1725,13 @@ export function TtsReader() {
             )}
           </div>
 
-          <div className="text-[10px] font-mono text-slate-600 font-semibold text-center md:text-right">
-            Sentence {currentSentenceIndex >= 0 ? currentSentenceIndex + 1 : 0} of {sentences.length}
+          <div className="text-[10px] font-mono text-slate-500 font-semibold text-center md:text-right flex items-center justify-center md:justify-end gap-2.5">
+            {isHinglishMode && (
+              <span className="text-[9px] bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded font-mono font-bold flex items-center gap-1">
+                <span>🇮🇳 🇵🇰 Hinglish</span>
+              </span>
+            )}
+            <span>Sentence {currentSentenceIndex >= 0 ? currentSentenceIndex + 1 : 0} of {sentences.length}</span>
           </div>
 
         </section>
